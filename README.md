@@ -1,13 +1,13 @@
 # DJ Set Track Identifier
 
-A Python script that automatically generates tracklists from DJ sets on YouTube using Shazam audio recognition.
+A Python tool that automatically generates tracklists from DJ sets on YouTube using Shazam and AcoustID audio recognition services.
 
 ## Description
 
 This tool allows you to:
 - Download a set from YouTube using yt-dlp
 - Split the audio into configurable duration segments (chunks)
-- Analyze each segment using the Shazam API
+- Analyze each segment using the Shazam API or AcoustID
 - Consolidate the results into a clean and accurate tracklist
 - Export the results in multiple formats (TXT, JSON, HTML, CUE)
 
@@ -21,31 +21,53 @@ yt-dlp
 pydub
 ffmpeg
 shazamio
+fpcalc (Chromaprint)
 ```
 
 ## Installation
 
 ```bash
-pip install yt-dlp pydub shazamio
+pip install yt-dlp pydub shazamio requests
+
 # Install ffmpeg according to your operating system
+
+# Install fpcalc/Chromaprint
+# On Ubuntu/Debian:
+sudo apt-get install libchromaprint-tools
+
+# On macOS:
+brew install chromaprint
+
+# On Windows:
+# Download from https://acoustid.org/chromaprint and add to PATH
 ```
 
 ## Usage
 
 ```bash
-# Basic usage
-python main.py [YOUTUBE_URL]
+# Using Shazam for identification
+python shazam_track_identifier.py [YOUTUBE_URL]
 
-# Advanced usage with options
-python main.py [YOUTUBE_URL] --chunk-duration 30 --output-dir my_tracklists --formats txt,json,html,cue
+# Using AcoustID for identification
+python acoustid_track_identifier.py [YOUTUBE_URL]
+
+# Advanced usage with options (Shazam)
+python shazam_track_identifier.py [YOUTUBE_URL] --chunk-duration 30 --output-dir my_tracklists --formats txt,json,html,cue
 ```
 
 ### Command line arguments
 
 - `url`: YouTube URL of the DJ set to analyze
-- `--chunk-duration`: Duration of audio chunks in seconds (default: 30)
+- `--chunk-duration`: Duration of audio chunks in seconds (default: 30 for Shazam, 60 for AcoustID)
 - `--output-dir`: Directory to save output files (default: 'output')
 - `--formats`: Comma-separated list of output formats (default: txt,json,html,cue)
+
+## Audio Recognition Services
+
+This tool supports two recognition services:
+
+- **Shazam**: Excellent for mainstream music and recent releases. Uses the shazamio library.
+- **AcoustID**: Open-source fingerprinting system with a large library of tracks. Requires fpcalc (Chromaprint).
 
 ## Export Formats
 
@@ -58,23 +80,25 @@ The tool can export tracklists in multiple formats:
 
 ## Implemented Features
 
-- **Intelligent Result Consolidation**: Uses a text similarity-based algorithm (difflib) to correctly group fragmented identifications of the same track. Allows brief interruptions and compares both title and artist with custom weighting.
+- **Multiple Recognition Services**: Supports both Shazam and AcoustID for better coverage and accuracy.
 
-- **Minimum Duration Filtering**: Automatically discards tracks identified with duration less than a configurable threshold (currently 60 seconds), eliminating false positives and partial detections.
+- **Intelligent Result Consolidation**: Uses a text similarity-based algorithm (difflib) to correctly group fragmented identifications of the same track.
 
-- **Multiple Export Formats**: Exports tracklists in various formats (TXT, JSON, HTML, CUE) for different use cases and applications.
+- **Minimum Duration Filtering**: Automatically discards tracks identified with duration less than a configurable threshold.
+
+- **Multiple Export Formats**: Exports tracklists in various formats (TXT, JSON, HTML, CUE) for different use cases.
 
 - **Robust Error Handling**: Implements exponential backoff with jitter to handle API rate limits and network issues.
 
 ## Planned Improvements (TODO)
 
 ### Short-Term Improvements
-- [ ] **Similarity Threshold Adjustment**: Reduce the threshold (currently 0.85) to improve consolidation of tracks with variations in names
+- [ ] **Service Integration**: Combine results from both Shazam and AcoustID for improved accuracy
+- [ ] **Similarity Threshold Adjustment**: Reduce the threshold to improve consolidation of tracks with variations in names
 - [ ] **Max Interruption Adjustment**: Expand tolerance for gaps between detections of the same track
 - [x] **Improved Output Format**: Implement format similar to 1001Tracklist with numbering
-- [ ] **Chunk Duration Adjustment**: Experiment with different values (15, 20, 30 seconds) to optimize accuracy
+- [ ] **Chunk Duration Adjustment**: Experiment with different values to optimize accuracy
 - [ ] **Audio Preprocessing**: Normalize volume and equalization to improve recognition rates
-- [ ] **Metadata Correction**: Unify artist/track names with small variations
 
 ### Intermediate Improvements
 - [ ] **Confidence Scoring System**: Implement logic to value consistent identifications
