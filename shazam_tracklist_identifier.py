@@ -505,9 +505,11 @@ async def main(url, chunk_duration=30, output_formats=None, output_dir=None):
     try:
         # Descargar audio
         audio_path, video_title = await asyncio.to_thread(download_audio, url)
+        logger.info(f"Audio descargado: {audio_path}")
 
         # Dividir en chunks
         chunks, total_duration = split_audio(audio_path, chunk_duration)
+        logger.info(f"Audio dividido en {len(chunks)} chunks")
 
         # Procesar reconocimiento
         logger.info("Iniciando reconocimiento de canciones con Shazam")
@@ -532,16 +534,18 @@ async def main(url, chunk_duration=30, output_formats=None, output_dir=None):
 
         # Generar tracklist
         tracklist = compile_tracklist(results, chunk_duration)
+        logger.info(f"Tracklist generada con {len(tracklist)} tracks")
 
-        # Exportar resultado
-        export_tracklist(
-            tracklist,
-            output_formats=output_formats,
-            base_filename=base_filename,
-            video_title=video_title,
-            video_url=url,
-            audio_file_path=audio_path,
-        )
+        # Exportar resultado si se especificaron formatos
+        if output_formats:
+            export_tracklist(
+                tracklist,
+                output_formats=output_formats,
+                base_filename=base_filename,
+                video_title=video_title,
+                video_url=url,
+                audio_file_path=audio_path,
+            )
 
         # Limpieza
         logger.info("Iniciando limpieza de archivos temporales")
@@ -550,8 +554,11 @@ async def main(url, chunk_duration=30, output_formats=None, output_dir=None):
             os.remove(chunk)
         logger.info("Limpieza completada")
 
+        return tracklist
+
     except Exception as e:
         logger.error(f"Error en el proceso principal: {str(e)}")
+        logger.error(traceback.format_exc())
         raise
 
 
