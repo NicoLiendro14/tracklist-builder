@@ -10,7 +10,7 @@ response = requests.post(url, json=data)
 print(response.json())
  """
  
-import requests
+""" import requests
 
 url = "http://localhost:8000/api/discogs/search"
 data = {
@@ -21,4 +21,21 @@ data = {
 }
 
 response = requests.post(url, json=data)
+print(response.json()) """
+
+# Test para obtener detalles de un release en Discogs
+import requests
+
+# ID del release "Kerri Chandler - Rain" en Discogs
+release_id = 8115398
+
+# URL del endpoint
+url = f"http://localhost:8000/api/discogs/releases/{release_id}"
+
+# Realizar la petición GET
+response = requests.get(url)
+
+# Imprimir la respuesta
+print("Status Code:", response.status_code)
+print("\nRespuesta:")
 print(response.json())

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import asyncio
 from shazam_tracklist_identifier import main as identify_tracks
 import uuid
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Configuración de Discogs
 DISCOGS_API_URL = "https://api.discogs.com/database/search"
+DISCOGS_RELEASE_URL = "https://api.discogs.com/releases"
 DISCOGS_USER_AGENT = os.getenv("DISCOGS_USER_AGENT")
 DISCOGS_CONSUMER_KEY = os.getenv("DISCOGS_CONSUMER_KEY")
 DISCOGS_CONSUMER_SECRET = os.getenv("DISCOGS_CONSUMER_SECRET")
@@ -87,6 +88,104 @@ class DiscogsTrack(BaseModel):
 class DiscogsSearchResponse(BaseModel):
     pagination: dict
     results: List[DiscogsTrack]
+
+class DiscogsArtist(BaseModel):
+    id: int
+    name: str
+    resource_url: str
+    anv: Optional[str] = ""
+    join: Optional[str] = ""
+    role: Optional[str] = ""
+    tracks: Optional[str] = ""
+
+class DiscogsCommunity(BaseModel):
+    have: int
+    want: int
+    rating: Dict[str, float]
+    status: str
+    submitter: Dict[str, str]
+    data_quality: str
+    contributors: List[Dict[str, str]]
+
+class DiscogsCompany(BaseModel):
+    id: int
+    name: str
+    resource_url: str
+    catno: Optional[str] = ""
+    entity_type: Optional[str] = ""
+    entity_type_name: Optional[str] = ""
+
+class DiscogsFormat(BaseModel):
+    name: str
+    qty: str
+    descriptions: List[str]
+
+class DiscogsIdentifier(BaseModel):
+    type: str
+    value: str
+
+class DiscogsImage(BaseModel):
+    height: int
+    width: int
+    resource_url: str
+    type: str
+    uri: str
+    uri150: str
+
+class DiscogsLabel(BaseModel):
+    id: int
+    name: str
+    resource_url: str
+    catno: Optional[str] = ""
+    entity_type: Optional[str] = ""
+
+class DiscogsTrack(BaseModel):
+    position: str
+    title: str
+    duration: Optional[str] = None
+    type_: Optional[str] = None
+
+class DiscogsVideo(BaseModel):
+    description: str
+    duration: int
+    embed: bool
+    title: str
+    uri: str
+
+class DiscogsReleaseResponse(BaseModel):
+    id: int
+    title: str
+    artists: List[DiscogsArtist]
+    data_quality: str
+    thumb: str
+    community: DiscogsCommunity
+    companies: List[DiscogsCompany]
+    country: str
+    date_added: str
+    date_changed: str
+    estimated_weight: Optional[int] = None
+    extraartists: List[DiscogsArtist]
+    format_quantity: int
+    formats: List[DiscogsFormat]
+    genres: List[str]
+    identifiers: List[DiscogsIdentifier]
+    images: List[DiscogsImage]
+    labels: List[DiscogsLabel]
+    lowest_price: Optional[float] = None
+    master_id: Optional[int] = None
+    master_url: Optional[str] = None
+    notes: Optional[str] = None
+    num_for_sale: Optional[int] = None
+    released: str
+    released_formatted: str
+    resource_url: str
+    series: List[Any] = []
+    status: str
+    styles: List[str]
+    tracklist: List[DiscogsTrack]
+    uri: str
+    videos: List[DiscogsVideo]
+    year: int
 
 # Respuesta hardcodeada para pruebas
 HARDCODED_RESPONSE = {
@@ -282,6 +381,54 @@ async def search_discogs(request: DiscogsSearchRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error en la búsqueda de Discogs: {str(e)}"
+        )
+
+@app.get("/api/discogs/releases/{release_id}", response_model=DiscogsReleaseResponse)
+async def get_discogs_release(release_id: int, curr_abbr: Optional[str] = None):
+    """Obtiene información detallada de un release de Discogs"""
+    try:
+        logger.info(f"Obteniendo información del release {release_id}")
+        
+        headers = {
+            "User-Agent": DISCOGS_USER_AGENT,
+            "Accept": "application/json",
+            "Authorization": f"Discogs key={DISCOGS_CONSUMER_KEY}, secret={DISCOGS_CONSUMER_SECRET}"
+        }
+        
+        params = {}
+        if curr_abbr:
+            params["curr_abbr"] = curr_abbr
+        
+        logger.info(f"Realizando petición a Discogs con headers: {headers}")
+        logger.info(f"Parámetros: {params}")
+        
+        response = requests.get(
+            f"{DISCOGS_RELEASE_URL}/{release_id}",
+            headers=headers,
+            params=params
+        )
+        
+        logger.info(f"Respuesta de Discogs - Status Code: {response.status_code}")
+        
+        if response.status_code != 200:
+            logger.error(f"Error al obtener el release: {response.status_code}")
+            logger.error(f"Respuesta de error: {response.text}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error al obtener el release: {response.text}"
+            )
+        
+        data = response.json()
+        logger.info(f"Release obtenido correctamente: {data.get('title')}")
+        
+        return data
+        
+    except Exception as e:
+        logger.error(f"Error al obtener el release: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener el release: {str(e)}"
         )
 
 def format_time(seconds):

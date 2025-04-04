@@ -11,6 +11,7 @@ This tool allows you to:
 - Consolidate the results into a clean and accurate tracklist
 - Export the results in multiple formats (TXT, JSON, HTML, CUE)
 - Search and enrich track metadata using the Discogs API
+- Get detailed release information from Discogs
 
 Ideal for DJs, music enthusiasts, and content creators who want to identify songs in long sets without having to manually recognize each track.
 
@@ -81,6 +82,7 @@ The tool provides a FastAPI-based REST API with the following endpoints:
 
 - `POST /api/tracks/identify/url`: Identify tracks from a YouTube URL
 - `POST /api/discogs/search`: Search for tracks in the Discogs database
+- `GET /api/discogs/releases/{release_id}`: Get detailed information about a specific release
 
 ### Discogs Search Example
 
@@ -89,6 +91,25 @@ curl -X POST "http://localhost:8000/api/discogs/search" \
      -H "Content-Type: application/json" \
      -d '{"query": "Daft Punk", "type": "release", "per_page": 10, "page": 1}'
 ```
+
+### Discogs Release Details Example
+
+```bash
+# Get release details
+curl "http://localhost:8000/api/discogs/releases/8115398"
+
+# Get release details with specific currency
+curl "http://localhost:8000/api/discogs/releases/8115398?curr_abbr=USD"
+```
+
+The release details endpoint returns comprehensive information including:
+- Basic release information (title, artists, year)
+- Tracklist with durations
+- Format details
+- Images and videos
+- Community data (ratings, wants, haves)
+- Marketplace information
+- Additional metadata (notes, identifiers, etc.)
 
 ## Audio Recognition Services
 
@@ -111,6 +132,7 @@ The tool can export tracklists in multiple formats:
 
 - **Multiple Recognition Services**: Supports both Shazam and AcoustID for better coverage and accuracy.
 - **Discogs Integration**: Search and enrich track metadata using the Discogs API.
+- **Detailed Release Information**: Get comprehensive release details from Discogs.
 - **Intelligent Result Consolidation**: Uses a text similarity-based algorithm (difflib) to correctly group fragmented identifications of the same track.
 - **Minimum Duration Filtering**: Automatically discards tracks identified with duration less than a configurable threshold.
 - **Multiple Export Formats**: Exports tracklists in various formats (TXT, JSON, HTML, CUE) for different use cases.
