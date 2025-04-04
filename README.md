@@ -10,6 +10,7 @@ This tool allows you to:
 - Analyze each segment using the Shazam API or AcoustID
 - Consolidate the results into a clean and accurate tracklist
 - Export the results in multiple formats (TXT, JSON, HTML, CUE)
+- Search and enrich track metadata using the Discogs API
 
 Ideal for DJs, music enthusiasts, and content creators who want to identify songs in long sets without having to manually recognize each track.
 
@@ -27,7 +28,7 @@ fpcalc (Chromaprint)
 ## Installation
 
 ```bash
-pip install yt-dlp pydub shazamio requests
+pip install -r requirements.txt
 
 # Install ffmpeg according to your operating system
 
@@ -41,6 +42,18 @@ brew install chromaprint
 # On Windows:
 # Download from https://acoustid.org/chromaprint and add to PATH
 ```
+
+## Configuration
+
+Create a `.env` file in the root directory with your Discogs API credentials:
+
+```env
+DISCOGS_USER_AGENT=YourAppName/1.0 +http://your-website.com
+DISCOGS_CONSUMER_KEY=your_consumer_key_here
+DISCOGS_CONSUMER_SECRET=your_consumer_secret_here
+```
+
+You can get these credentials by registering your application at https://www.discogs.com/settings/developers
 
 ## Usage
 
@@ -62,12 +75,28 @@ python shazam_track_identifier.py [YOUTUBE_URL] --chunk-duration 30 --output-dir
 - `--output-dir`: Directory to save output files (default: 'output')
 - `--formats`: Comma-separated list of output formats (default: txt,json,html,cue)
 
+## API Endpoints
+
+The tool provides a FastAPI-based REST API with the following endpoints:
+
+- `POST /api/tracks/identify/url`: Identify tracks from a YouTube URL
+- `POST /api/discogs/search`: Search for tracks in the Discogs database
+
+### Discogs Search Example
+
+```bash
+curl -X POST "http://localhost:8000/api/discogs/search" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "Daft Punk", "type": "release", "per_page": 10, "page": 1}'
+```
+
 ## Audio Recognition Services
 
 This tool supports two recognition services:
 
 - **Shazam**: Excellent for mainstream music and recent releases. Uses the shazamio library.
 - **AcoustID**: Open-source fingerprinting system with a large library of tracks. Requires fpcalc (Chromaprint).
+- **Discogs**: Integration with Discogs API for track metadata enrichment and search.
 
 ## Export Formats
 
@@ -81,14 +110,12 @@ The tool can export tracklists in multiple formats:
 ## Implemented Features
 
 - **Multiple Recognition Services**: Supports both Shazam and AcoustID for better coverage and accuracy.
-
+- **Discogs Integration**: Search and enrich track metadata using the Discogs API.
 - **Intelligent Result Consolidation**: Uses a text similarity-based algorithm (difflib) to correctly group fragmented identifications of the same track.
-
 - **Minimum Duration Filtering**: Automatically discards tracks identified with duration less than a configurable threshold.
-
 - **Multiple Export Formats**: Exports tracklists in various formats (TXT, JSON, HTML, CUE) for different use cases.
-
 - **Robust Error Handling**: Implements exponential backoff with jitter to handle API rate limits and network issues.
+- **Environment Configuration**: Uses .env files for secure credential management.
 
 ## Planned Improvements (TODO)
 
@@ -102,7 +129,7 @@ The tool can export tracklists in multiple formats:
 
 ### Intermediate Improvements
 - [ ] **Confidence Scoring System**: Implement logic to value consistent identifications
-- [ ] **Enriched Metadata**: Integrate with additional APIs for information such as year, genre, and BPM
+- [x] **Enriched Metadata**: Integrate with Discogs API for additional track information
 - [ ] **Recognition Cache**: Store previous results to improve performance in future analyses
 - [x] **DJ Format Exports**: Generate files compatible with popular DJ software
 
@@ -122,6 +149,7 @@ The script currently significantly reduces the number of erroneous and duplicate
 - Beautiful HTML output with professional formatting
 - JSON structure for programmatic access
 - CUE files for direct import into DJ software
+- Rich metadata from Discogs integration
 
 ## Contributions
 

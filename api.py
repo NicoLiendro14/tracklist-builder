@@ -7,6 +7,14 @@ from shazam_tracklist_identifier import main as identify_tracks
 import uuid
 import logging
 import traceback
+import requests
+from datetime import datetime
+import os
+from dotenv import load_dotenv
+import discogs_client
+
+# Cargar variables de entorno
+load_dotenv()
 
 # Configuración de logging
 logging.basicConfig(
@@ -16,6 +24,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Configuración de Discogs
+DISCOGS_API_URL = "https://api.discogs.com/database/search"
+DISCOGS_USER_AGENT = os.getenv("DISCOGS_USER_AGENT")
+DISCOGS_CONSUMER_KEY = os.getenv("DISCOGS_CONSUMER_KEY")
+DISCOGS_CONSUMER_SECRET = os.getenv("DISCOGS_CONSUMER_SECRET")
+
+d = discogs_client.Client(
+    DISCOGS_USER_AGENT,
+    consumer_key=DISCOGS_CONSUMER_KEY,
+    consumer_secret=DISCOGS_CONSUMER_SECRET
+)
 
 app = FastAPI(
     title="DJ Track Identifier API",
@@ -46,6 +65,28 @@ class TrackIdentificationResponse(BaseModel):
     id: str
     tracks: List[Track]
     totalTracks: int
+
+class DiscogsSearchRequest(BaseModel):
+    query: str
+    type: Optional[str] = "release"
+    per_page: Optional[int] = 10
+    page: Optional[int] = 1
+
+class DiscogsTrack(BaseModel):
+    title: str
+    artist: str
+    year: Optional[str] = None
+    country: Optional[str] = None
+    format: Optional[List[str]] = None
+    label: Optional[List[str]] = None
+    genre: Optional[List[str]] = None
+    style: Optional[List[str]] = None
+    resource_url: str
+    id: int
+
+class DiscogsSearchResponse(BaseModel):
+    pagination: dict
+    results: List[DiscogsTrack]
 
 # Respuesta hardcodeada para pruebas
 HARDCODED_RESPONSE = {
@@ -162,6 +203,85 @@ async def identify_tracks_from_url(request: TrackIdentificationRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error en la identificación de tracks: {str(e)}"
+        )
+
+@app.post("/api/discogs/search", response_model=DiscogsSearchResponse)
+async def search_discogs(request: DiscogsSearchRequest):
+    """Busca tracks en Discogs"""
+    try:
+        logger.info(f"Buscando en Discogs: {request.query}")
+        
+        headers = {
+            "User-Agent": DISCOGS_USER_AGENT,
+            "Accept": "application/json",
+            "Authorization": f"Discogs key={DISCOGS_CONSUMER_KEY}, secret={DISCOGS_CONSUMER_SECRET}"
+        }
+        
+        params = {
+            "q": request.query,
+            "type": request.type,
+            "per_page": request.per_page,
+            "page": request.page
+        }
+        
+        logger.info(f"Realizando petición a Discogs con headers: {headers}")
+        logger.info(f"Parámetros de búsqueda: {params}")
+        
+        response = requests.get(
+            DISCOGS_API_URL,
+            headers=headers,
+            params=params
+        )
+        
+        logger.info(f"Respuesta de Discogs - Status Code: {response.status_code}")
+        logger.info(f"Headers de respuesta: {response.headers}")
+        
+        if response.status_code != 200:
+            logger.error(f"Error en la búsqueda de Discogs: {response.status_code}")
+            logger.error(f"Respuesta de error: {response.text}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Error en la búsqueda de Discogs: {response.text}"
+            )
+        
+        data = response.json()
+        
+        tracks = []
+        for item in data.get("results", []):
+            try:
+                title_parts = item.get("title", "").split(" - ", 1)
+                artist = title_parts[0] if len(title_parts) > 1 else "Unknown"
+                title = title_parts[1] if len(title_parts) > 1 else title_parts[0]
+                
+                tracks.append(DiscogsTrack(
+                    title=title,
+                    artist=artist,
+                    year=item.get("year"),
+                    country=item.get("country"),
+                    format=item.get("format", []),
+                    label=item.get("label", []),
+                    genre=item.get("genre", []),
+                    style=item.get("style", []),
+                    resource_url=item.get("resource_url", ""),
+                    id=item.get("id", 0)
+                ))
+            except Exception as e:
+                logger.error(f"Error procesando resultado de Discogs: {str(e)}")
+                continue
+        
+        logger.info(f"Búsqueda completada. {len(tracks)} resultados encontrados")
+        
+        return DiscogsSearchResponse(
+            pagination=data.get("pagination", {}),
+            results=tracks
+        )
+        
+    except Exception as e:
+        logger.error(f"Error en la búsqueda de Discogs: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en la búsqueda de Discogs: {str(e)}"
         )
 
 def format_time(seconds):

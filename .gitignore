@@ -22,6 +22,7 @@ var/
 venv/
 .venv/
 ENV/
+.env
 
 # Audio files
 *.mp3
