@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional, Dict, Any
 import asyncio
-from shazam_tracklist_identifier import main as identify_tracks
 import uuid
 import logging
 import traceback
@@ -12,6 +11,9 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 import discogs_client
+
+# Importamos nuestra nueva arquitectura
+from recognizers.manager import TrackRecognitionManager
 
 # Cargar variables de entorno
 load_dotenv()
@@ -30,6 +32,9 @@ DISCOGS_RELEASE_URL = "https://api.discogs.com/releases"
 DISCOGS_USER_AGENT = os.getenv("DISCOGS_USER_AGENT")
 DISCOGS_CONSUMER_KEY = os.getenv("DISCOGS_CONSUMER_KEY")
 DISCOGS_CONSUMER_SECRET = os.getenv("DISCOGS_CONSUMER_SECRET")
+
+# Configuración del track_finder.exe
+TRACK_FINDER_PATH = os.getenv("TRACK_FINDER_PATH", "./track_finder.exe")
 
 d = discogs_client.Client(
     DISCOGS_USER_AGENT,
@@ -54,6 +59,8 @@ app.add_middleware(
 class TrackIdentificationRequest(BaseModel):
     url: HttpUrl
     platform: str
+    recognizers: Optional[List[str]] = ["shazam"]  # Por defecto usa solo Shazam
+    chunk_duration: Optional[int] = 30
 
 class Track(BaseModel):
     timestamp: str
@@ -61,6 +68,7 @@ class Track(BaseModel):
     artist: str
     label: Optional[str] = None
     confidence: float
+    recognizer: Optional[str] = None
 
 class TrackIdentificationResponse(BaseModel):
     id: str
@@ -252,56 +260,84 @@ async def identify_tracks_from_url_test(request: TrackIdentificationRequest):
 
 @app.post("/api/tracks/identify/url", response_model=TrackIdentificationResponse)
 async def identify_tracks_from_url(request: TrackIdentificationRequest):
+    """
+    Identifica tracks en una URL utilizando los reconocedores especificados.
+    """
     try:
         logger.info(f"Iniciando identificación de tracks para URL: {request.url}")
         logger.info(f"Plataforma: {request.platform}")
+        logger.info(f"Reconocedores: {request.recognizers}")
+        logger.info(f"Duración de chunks: {request.chunk_duration}")
         
-        identification_id = str(uuid.uuid4())
-        logger.info(f"ID de identificación: {identification_id}")
+        # Verificar si la URL es válida
+        if not request.url:
+            raise HTTPException(status_code=400, detail="URL inválida")
         
-        results = await identify_tracks(
-            str(request.url),
-            chunk_duration=30,
-            output_formats=["json"],
-            output_dir="output"
+        # Configurar parámetros específicos para reconocedores
+        recognizer_params = {}
+        for recognizer in request.recognizers:
+            recognizer_params[recognizer] = {
+                "chunk_duration": request.chunk_duration
+            }
+            
+            # Parámetros específicos para track_finder si se usa
+            if recognizer == "track_finder":
+                if not os.path.exists(TRACK_FINDER_PATH):
+                    raise HTTPException(
+                        status_code=500, 
+                        detail=f"El ejecutable 'track_finder.exe' no se encuentra en la ruta: {TRACK_FINDER_PATH}"
+                    )
+                recognizer_params[recognizer]["executable_path"] = TRACK_FINDER_PATH
+                
+            # Parámetros específicos para executable si se usa
+            elif recognizer == "executable":
+                executable_path = os.getenv("EXECUTABLE_RECOGNIZER_PATH")
+                if not executable_path:
+                    raise HTTPException(
+                        status_code=500, 
+                        detail="Falta configuración para el reconocedor 'executable'. Configura EXECUTABLE_RECOGNIZER_PATH en .env"
+                    )
+                recognizer_params[recognizer]["executable_path"] = executable_path
+        
+        # Crear el gestor de reconocimiento
+        manager = TrackRecognitionManager(output_dir="output")
+        
+        # Iniciar el proceso de reconocimiento
+        logger.info(f"Iniciando reconocimiento con {', '.join(request.recognizers)} para URL: {request.url}")
+        result = await manager.identify_tracks(
+            url=str(request.url),
+            recognizer_types=request.recognizers,
+            recognizer_params=recognizer_params
         )
         
-        if not results:
-            logger.warning("No se encontraron tracks en el resultado")
-            return TrackIdentificationResponse(
-                id=identification_id,
-                tracks=[],
-                totalTracks=0
-            )
-        
+        # Crear respuesta en el formato esperado por la API
         tracks = []
-        for track in results:
-            try:
-                tracks.append(Track(
-                    timestamp=format_time(track["start"]),
-                    title=track["track"]["title"],
-                    artist=track["track"]["artist"],
-                    confidence=1.0
-                ))
-            except Exception as e:
-                logger.error(f"Error procesando track: {str(e)}")
-                logger.error(traceback.format_exc())
-                continue
+        for track_data in result["combined_results"]:
+            track = Track(
+                timestamp=track_data["timestamp"],
+                title=track_data["title"],
+                artist=track_data["artist"],
+                label=track_data.get("label"),
+                confidence=track_data.get("confidence", 1.0),
+                recognizer=track_data.get("recognizer")
+            )
+            tracks.append(track)
         
-        logger.info(f"Identificación completada. {len(tracks)} tracks encontrados")
-        
-        return TrackIdentificationResponse(
-            id=identification_id,
+        response = TrackIdentificationResponse(
+            id=result["id"],
             tracks=tracks,
             totalTracks=len(tracks)
         )
         
+        logger.info(f"Reconocimiento completado: {len(tracks)} tracks identificados")
+        return response
+        
     except Exception as e:
-        logger.error(f"Error en la identificación de tracks: {str(e)}")
+        logger.error(f"Error en el reconocimiento: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Error en la identificación de tracks: {str(e)}"
+            detail=f"Error en el procesamiento: {str(e)}"
         )
 
 @app.post("/api/discogs/search", response_model=DiscogsSearchResponse)

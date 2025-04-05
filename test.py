@@ -1,4 +1,4 @@
-""" import requests
+import requests
 
 url = "http://localhost:8000/api/tracks/identify/url"
 data = {
@@ -8,7 +8,7 @@ data = {
 
 response = requests.post(url, json=data)
 print(response.json())
- """
+
  
 """ import requests
 
@@ -24,7 +24,7 @@ response = requests.post(url, json=data)
 print(response.json()) """
 
 # Test para obtener detalles de un release en Discogs
-import requests
+""" import requests
 
 # ID del release "Kerri Chandler - Rain" en Discogs
 release_id = 8115398
@@ -38,4 +38,4 @@ response = requests.get(url)
 # Imprimir la respuesta
 print("Status Code:", response.status_code)
 print("\nRespuesta:")
-print(response.json())
+print(response.json()) """

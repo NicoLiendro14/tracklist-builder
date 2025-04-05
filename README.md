@@ -1,182 +1,223 @@
-# DJ Set Track Identifier
+# Proyecto de Reconocimiento de Tracks de Audio
 
-A Python tool that automatically generates tracklists from DJ sets on YouTube using Shazam and AcoustID audio recognition services.
+Este proyecto proporciona una arquitectura para reconocer tracks de audio utilizando diferentes servicios como Shazam, AcoustID y ejecutables externos.
 
-## Description
+## Características
 
-This tool allows you to:
-- Download a set from YouTube using yt-dlp
-- Split the audio into configurable duration segments (chunks)
-- Analyze each segment using the Shazam API or AcoustID
-- Consolidate the results into a clean and accurate tracklist
-- Export the results in multiple formats (TXT, JSON, HTML, CUE)
-- Search and enrich track metadata using the Discogs API
-- Get detailed release information from Discogs
+- **Arquitectura modular y extensible**: Diseñada con principios SOLID y POO.
+- **Soporte para múltiples reconocedores**:
+  - **Shazam**: Reconocimiento a través de ShazamIO.
+  - **AcoustID**: Reconocimiento basado en huellas de audio con fpcalc.
+  - **track_finder**: Reconocimiento a través del ejecutable track_finder.exe.
+  - **Ejecutables personalizados**: Soporte para otros ejecutables que generen JSON.
+- **Conversión automática de formatos**: Convierte automáticamente los archivos de audio al formato requerido por cada reconocedor.
+- **Combinación de resultados**: Puede utilizar múltiples reconocedores y combinar sus resultados.
+- **API REST**: Expone los servicios a través de una API REST con FastAPI.
 
-Ideal for DJs, music enthusiasts, and content creators who want to identify songs in long sets without having to manually recognize each track.
-
-## Requirements
+## Estructura del Proyecto
 
 ```
-python >= 3.8
-yt-dlp
-pydub
-ffmpeg
-shazamio
-fpcalc (Chromaprint)
+├── recognizers/               # Paquete principal para reconocedores
+│   ├── __init__.py            # Exporta las clases principales
+│   ├── base_recognizer.py     # Clase base abstracta para reconocedores
+│   ├── shazam_recognizer.py   # Implementación para Shazam
+│   ├── acoustid_recognizer.py # Implementación para AcoustID
+│   ├── executable_recognizer.py # Implementación para ejecutables externos
+│   ├── factory.py             # Fábrica para crear reconocedores
+│   ├── manager.py             # Gestor para orquestar reconocedores
+│   ├── track_finder.exe       # Ejecutable para reconocimiento de tracks
+│   └── utils.py               # Funciones de utilidad comunes
+├── api.py                     # API REST con FastAPI
+├── example.py                 # Script de ejemplo de uso
+├── __init__.py                # Archivo de inicialización del módulo
+└── requirements.txt           # Dependencias del proyecto
 ```
 
-## Installation
+## Requisitos
+
+- Python 3.6 o superior
+- ffmpeg (para manipulación de audio)
+- fpcalc (para AcoustID)
+- track_finder.exe (debe estar en la carpeta `recognizers/`)
+
+## Instalación
+
+1. Clona este repositorio:
+   ```
+   git clone https://github.com/yourusername/audio-track-recognition.git
+   cd audio-track-recognition
+   ```
+
+2. Crea un entorno virtual e instala las dependencias:
+   ```
+   python -m venv venv
+   source venv/bin/activate  # En Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. Asegúrate de que el ejecutable track_finder.exe esté en la carpeta `recognizers/`:
+   ```
+   # En Windows, puedes copiarlo con:
+   copy C:\ruta\a\track_finder.exe recognizers\
+   
+   # En Linux/MacOS:
+   cp /ruta/a/track_finder.exe recognizers/
+   ```
+
+4. Configura las variables de entorno (opcional):
+   ```
+   cp .env.example .env
+   ```
+   Edita el archivo `.env` para personalizar configuraciones si es necesario.
+
+## Uso
+
+### Como script independiente
+
+```python
+import asyncio
+from recognizers import TrackRecognitionManager
+
+async def main():
+    # Crear gestor de reconocimiento
+    manager = TrackRecognitionManager(output_dir="output")
+    
+    # Reconocer tracks con múltiples reconocedores incluyendo track_finder
+    results = await manager.identify_tracks(
+        url="https://www.youtube.com/watch?v=ejemplo",
+        recognizer_types=["shazam", "acoustid", "track_finder"],
+        recognizer_params={
+            "shazam": {"chunk_duration": 30},
+            "acoustid": {"chunk_duration": 60},
+            "track_finder": {
+                "executable_path": "recognizers/track_finder.exe",
+                "chunk_duration": 15
+            }
+        }
+    )
+    
+    # Imprimir resultados
+    for track in results["combined_results"]:
+        print(f"[{track['timestamp']}] {track['title']} - {track['artist']} ({track['recognizer']})")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Como servicio API
+
+1. Inicia el servidor API:
+   ```
+   uvicorn api:app --reload
+   ```
+
+2. La API estará disponible en `http://localhost:8000`
+
+3. Endpoints principales:
+   - `POST /api/tracks/identify/url`: Identifica tracks en una URL con los reconocedores especificados
+   - `POST /api/discogs/search`: Busca información en Discogs
+   - `GET /api/discogs/releases/{id}`: Obtiene detalles de un release
+
+### Uso del reconocedor track_finder
+
+El reconocedor track_finder utiliza el ejecutable track_finder.exe, que analiza archivos de audio y devuelve resultados en formato JSON. Para utilizarlo:
+
+1. Asegúrate de que track_finder.exe esté en la carpeta `recognizers/` del proyecto:
+   ```
+   recognizers/track_finder.exe
+   ```
+
+2. Al realizar la llamada a la API o usar el script example.py, especifica "track_finder" como reconocedor:
+   ```json
+   {
+     "url": "https://www.youtube.com/watch?v=ejemplo",
+     "platform": "youtube",
+     "recognizers": ["shazam", "track_finder"],
+     "chunk_duration": 30
+   }
+   ```
+
+3. El sistema automáticamente:
+   - Buscará el ejecutable en la carpeta recognizers/
+   - Convertirá los archivos MP3 a WAV (requerido por track_finder.exe)
+   - Procesará el resultado JSON y lo normalizará
+   - Combinará los resultados con los de otros reconocedores
+
+4. Nota: track_finder.exe requiere archivos en formato WAV. El sistema convertirá automáticamente los chunks de audio a WAV antes de enviarlos al ejecutable.
+
+## Uso del script de ejemplo
+
+Para el reconocimiento con track_finder, usa:
 
 ```bash
-pip install -r requirements.txt
-
-# Install ffmpeg according to your operating system
-
-# Install fpcalc/Chromaprint
-# On Ubuntu/Debian:
-sudo apt-get install libchromaprint-tools
-
-# On macOS:
-brew install chromaprint
-
-# On Windows:
-# Download from https://acoustid.org/chromaprint and add to PATH
+python example.py --url "https://www.youtube.com/watch?v=ejemplo" --recognizers "track_finder" --executable-path "recognizers/track_finder.exe"
 ```
 
-## Configuration
-
-Create a `.env` file in the root directory with your Discogs API credentials:
-
-```env
-DISCOGS_USER_AGENT=YourAppName/1.0 +http://your-website.com
-DISCOGS_CONSUMER_KEY=your_consumer_key_here
-DISCOGS_CONSUMER_SECRET=your_consumer_secret_here
-```
-
-You can get these credentials by registering your application at https://www.discogs.com/settings/developers
-
-## Usage
+Incluso si no especificas la ruta completa, el sistema intentará encontrar automáticamente el ejecutable en varias ubicaciones comunes:
 
 ```bash
-# Using Shazam for identification
-python shazam_track_identifier.py [YOUTUBE_URL]
-
-# Using AcoustID for identification
-python acoustid_track_identifier.py [YOUTUBE_URL]
-
-# Advanced usage with options (Shazam)
-python shazam_track_identifier.py [YOUTUBE_URL] --chunk-duration 30 --output-dir my_tracklists --formats txt,json,html,cue
+python example.py --url "https://www.youtube.com/watch?v=ejemplo" --recognizers "track_finder"
 ```
 
-### Command line arguments
-
-- `url`: YouTube URL of the DJ set to analyze
-- `--chunk-duration`: Duration of audio chunks in seconds (default: 30 for Shazam, 60 for AcoustID)
-- `--output-dir`: Directory to save output files (default: 'output')
-- `--formats`: Comma-separated list of output formats (default: txt,json,html,cue)
-
-## API Endpoints
-
-The tool provides a FastAPI-based REST API with the following endpoints:
-
-- `POST /api/tracks/identify/url`: Identify tracks from a YouTube URL
-- `POST /api/discogs/search`: Search for tracks in the Discogs database
-- `GET /api/discogs/releases/{release_id}`: Get detailed information about a specific release
-
-### Discogs Search Example
+Para usar múltiples reconocedores a la vez:
 
 ```bash
-curl -X POST "http://localhost:8000/api/discogs/search" \
-     -H "Content-Type: application/json" \
-     -d '{"query": "Daft Punk", "type": "release", "per_page": 10, "page": 1}'
+python example.py --url "https://www.youtube.com/watch?v=ejemplo" --recognizers "shazam,acoustid,track_finder" 
 ```
 
-### Discogs Release Details Example
-
+Para ver todas las opciones disponibles:
 ```bash
-# Get release details
-curl "http://localhost:8000/api/discogs/releases/8115398"
-
-# Get release details with specific currency
-curl "http://localhost:8000/api/discogs/releases/8115398?curr_abbr=USD"
+python example.py --help
 ```
 
-The release details endpoint returns comprehensive information including:
-- Basic release information (title, artists, year)
-- Tracklist with durations
-- Format details
-- Images and videos
-- Community data (ratings, wants, haves)
-- Marketplace information
-- Additional metadata (notes, identifiers, etc.)
+## Extendiendo la arquitectura
 
-## Audio Recognition Services
+### Creando un nuevo reconocedor
 
-This tool supports two recognition services:
+1. Crea una nueva clase heredando de `BaseRecognizer`:
 
-- **Shazam**: Excellent for mainstream music and recent releases. Uses the shazamio library.
-- **AcoustID**: Open-source fingerprinting system with a large library of tracks. Requires fpcalc (Chromaprint).
-- **Discogs**: Integration with Discogs API for track metadata enrichment and search.
+```python
+from recognizers.base_recognizer import BaseRecognizer
 
-## Export Formats
+class MiReconocedor(BaseRecognizer):
+    async def download_audio(self, url):
+        # Implementa la descarga de audio
+        ...
+    
+    def split_audio(self, audio_path):
+        # Implementa la división de audio
+        ...
+    
+    async def recognize_chunk(self, chunk_path):
+        # Implementa el reconocimiento de chunks
+        ...
+    
+    def process_results(self, results):
+        # Implementa el procesamiento de resultados
+        ...
+```
 
-The tool can export tracklists in multiple formats:
+2. Registra tu reconocedor:
 
-- **TXT**: Simple text format with track numbers, timestamps, titles, and artists.
-- **JSON**: Structured data format with metadata for integration with other applications.
-- **HTML**: Visual presentation similar to 1001Tracklist with a modern, responsive design.
-- **CUE**: Standard format for DJ software and media players with precise timestamps.
+```python
+from recognizers import TrackRecognitionManager
+from mi_modulo import MiReconocedor
 
-## Implemented Features
+# Registrar el nuevo reconocedor
+TrackRecognitionManager.add_recognizer("mi_reconocedor", MiReconocedor)
 
-- **Multiple Recognition Services**: Supports both Shazam and AcoustID for better coverage and accuracy.
-- **Discogs Integration**: Search and enrich track metadata using the Discogs API.
-- **Detailed Release Information**: Get comprehensive release details from Discogs.
-- **Intelligent Result Consolidation**: Uses a text similarity-based algorithm (difflib) to correctly group fragmented identifications of the same track.
-- **Minimum Duration Filtering**: Automatically discards tracks identified with duration less than a configurable threshold.
-- **Multiple Export Formats**: Exports tracklists in various formats (TXT, JSON, HTML, CUE) for different use cases.
-- **Robust Error Handling**: Implements exponential backoff with jitter to handle API rate limits and network issues.
-- **Environment Configuration**: Uses .env files for secure credential management.
+# Usar el nuevo reconocedor
+manager = TrackRecognitionManager()
+results = await manager.identify_tracks(
+    url="https://ejemplo.com/audio.mp3",
+    recognizer_types=["mi_reconocedor"]
+)
+```
 
-## Planned Improvements (TODO)
+## Contribuir
 
-### Short-Term Improvements
-- [ ] **Service Integration**: Combine results from both Shazam and AcoustID for improved accuracy
-- [ ] **Similarity Threshold Adjustment**: Reduce the threshold to improve consolidation of tracks with variations in names
-- [ ] **Max Interruption Adjustment**: Expand tolerance for gaps between detections of the same track
-- [x] **Improved Output Format**: Implement format similar to 1001Tracklist with numbering
-- [ ] **Chunk Duration Adjustment**: Experiment with different values to optimize accuracy
-- [ ] **Audio Preprocessing**: Normalize volume and equalization to improve recognition rates
+Las contribuciones son bienvenidas. Por favor, abre un issue o un pull request si tienes alguna mejora o corrección.
 
-### Intermediate Improvements
-- [ ] **Confidence Scoring System**: Implement logic to value consistent identifications
-- [x] **Enriched Metadata**: Integrate with Discogs API for additional track information
-- [ ] **Recognition Cache**: Store previous results to improve performance in future analyses
-- [x] **DJ Format Exports**: Generate files compatible with popular DJ software
-
-### Advanced Improvements
-- [ ] **Unidentified Section Interpolation**: Algorithms to make reasonable assumptions about unidentified parts
-- [ ] **Manual Labeling**: Interface to manually correct or label problematic sections
-- [ ] **Remix Detection**: Identify when a song is a remix of another and group them appropriately
-- [ ] **Cross-Verification**: Compare results with other music identification APIs
-- [ ] **Transition Detection**: Analysis of audio characteristics to identify changes between songs
-
-## Current Results
-
-The script currently significantly reduces the number of erroneous and duplicate identifications. In tests with one-hour sets:
-- Reduction from ~60 raw detections to ~17 consolidated tracks
-- Correct identification of most major tracks
-- Some remaining duplicates requiring fine parameter tuning
-- Beautiful HTML output with professional formatting
-- JSON structure for programmatic access
-- CUE files for direct import into DJ software
-- Rich metadata from Discogs integration
-
-## Contributions
-
-Contributions are welcome. Please open an issue to discuss major changes before submitting a pull request.
-
-## License
+## Licencia
 
 MIT 
